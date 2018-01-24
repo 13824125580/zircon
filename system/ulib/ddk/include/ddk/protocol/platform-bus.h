@@ -50,6 +50,8 @@ typedef struct {
 enum {
     // Add the device but to not publish it to the devmgr until enabled with pbus_device_enable().
     PDEV_ADD_DISABLED = (1 << 0),
+    // Add the device to run in platform bus devhost rather than in a new devhost.
+    PDEV_ADD_PBUS_DEVHOST = (1 << 1),
 };
 
 typedef struct {

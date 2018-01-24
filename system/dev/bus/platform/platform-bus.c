@@ -69,6 +69,43 @@ static platform_bus_protocol_ops_t platform_bus_proto_ops = {
     .get_board_name = platform_bus_get_board_name,
 };
 
+// not static so we can access from platform_dev_get_protocol()
+zx_status_t platform_bus_get_protocol(void* ctx, uint32_t proto_id, void* protocol) {
+    platform_bus_t* bus = ctx;
+
+    switch (proto_id) {
+    case ZX_PROTOCOL_PLATFORM_BUS: {
+        platform_bus_protocol_t* proto = protocol;
+        proto->ops = &platform_bus_proto_ops;
+        proto->ctx = bus;
+        return ZX_OK;
+    }
+    case ZX_PROTOCOL_USB_MODE_SWITCH:
+        if (bus->ums.ops) {
+            memcpy(protocol, &bus->ums.ops, sizeof(bus->ums.ops));
+            return ZX_OK;
+        }
+        break;
+    case ZX_PROTOCOL_GPIO:
+        if (bus->gpio.ops) {
+            memcpy(protocol, &bus->gpio.ops, sizeof(bus->gpio.ops));
+            return ZX_OK;
+        }
+        break;
+    case ZX_PROTOCOL_I2C:
+        if (bus->i2c.ops) {
+            memcpy(protocol, &bus->i2c.ops, sizeof(bus->i2c.ops));
+            return ZX_OK;
+        }
+        break;
+    default:
+        // TODO(voydanoff) consider having a registry of arbitrary protocols
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
 static void platform_bus_release(void* ctx) {
     platform_bus_t* bus = ctx;
 
@@ -88,6 +125,7 @@ static void platform_bus_release(void* ctx) {
 
 static zx_protocol_device_t platform_bus_proto = {
     .version = DEVICE_OPS_VERSION,
+    .get_protocol = platform_bus_get_protocol,
     .release = platform_bus_release,
 };
 
