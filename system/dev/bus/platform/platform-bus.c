@@ -17,7 +17,7 @@
 
 #include "platform-bus.h"
 
-zx_status_t platform_bus_set_protocol(void* ctx, uint32_t proto_id, void* protocol) {
+static zx_status_t platform_bus_set_protocol(void* ctx, uint32_t proto_id, void* protocol) {
     if (!protocol) {
         return ZX_ERR_INVALID_ARGS;
     }
@@ -26,17 +26,34 @@ zx_status_t platform_bus_set_protocol(void* ctx, uint32_t proto_id, void* protoc
     switch (proto_id) {
     case ZX_PROTOCOL_USB_MODE_SWITCH:
         memcpy(&bus->ums, protocol, sizeof(bus->ums));
-        return ZX_OK;
+        break;
     case ZX_PROTOCOL_GPIO:
         memcpy(&bus->gpio, protocol, sizeof(bus->gpio));
-        return ZX_OK;
+        break;
     case ZX_PROTOCOL_I2C:
         memcpy(&bus->i2c, protocol, sizeof(bus->i2c));
-        return ZX_OK;
+        break;
     default:
         // TODO(voydanoff) consider having a registry of arbitrary protocols
         return ZX_ERR_NOT_SUPPORTED;
     }
+
+    completion_signal(&bus->proto_completion);
+    return ZX_OK;
+}
+
+static zx_status_t platform_bus_wait_protocol(void* ctx, uint32_t proto_id) {
+    platform_bus_t* bus = ctx;
+
+    platform_bus_protocol_t dummy;
+    while (platform_bus_get_protocol(bus, proto_id, &dummy) == ZX_ERR_NOT_SUPPORTED) {
+        completion_reset(&bus->proto_completion);
+        zx_status_t status = completion_wait(&bus->proto_completion, ZX_TIME_INFINITE);
+        if (status != ZX_OK) {
+            return status;
+        }
+    }
+    return ZX_OK;
 }
 
 static zx_status_t platform_bus_device_add(void* ctx, const pbus_dev_t* dev, uint32_t flags) {
@@ -64,6 +81,7 @@ static const char* platform_bus_get_board_name(void* ctx) {
 
 static platform_bus_protocol_ops_t platform_bus_proto_ops = {
     .set_protocol = platform_bus_set_protocol,
+    .wait_protocol = platform_bus_wait_protocol,
     .device_add = platform_bus_device_add,
     .device_enable = platform_bus_device_enable,
     .get_board_name = platform_bus_get_board_name,
@@ -156,6 +174,7 @@ static zx_status_t platform_bus_create(void* ctx, zx_device_t* parent, const cha
     if (!bus) {
         return  ZX_ERR_NO_MEMORY;
     }
+    completion_reset(&bus->proto_completion);
 
     char* board_name = strstr(args, "board=");
     if (board_name) {
